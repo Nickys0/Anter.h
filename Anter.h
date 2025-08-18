@@ -56,7 +56,7 @@
 #include <stddef.h>
 #include <assert.h>
 #include <stdio.h>
-#include <errno.h>
+// #include <errno.h>
 
 #include "vendor/stb/stb_ds.h"
 
@@ -615,7 +615,7 @@ lStr ant_strerror(void){
  * 
  *      |    DATE    |  VERSION  |              DESCRIPTION
  *      |            |           |
- *      | (?14/08/25)|    ??     | ++ AnterCommand              [STRUCT]
+ *      | (15/08/25) |   0.2.0   | ++ AnterCommand              [STRUCT]
  *      |            |           | ++ AnterCommandPARAMS        [STRUCT]
  *      |            |           | ++ ant_init                  [FUNC]
  *      |            |           | ++ ant_set_coms              [FUNC]
