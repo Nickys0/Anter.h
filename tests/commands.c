@@ -27,10 +27,3 @@ int main(int argc, char** argv) {
 
     return 0;
 }
-
-// #project_settings
-//     .flags = "-Wall", "-Wextra"
-//     .files = [
-//         "main.c",
-//         "src/*" // all the file that has the cn extension
-//     ]
