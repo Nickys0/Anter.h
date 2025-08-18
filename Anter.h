@@ -50,7 +50,6 @@
 #endif
 
 
-#include "vendor/Include/stb_ds.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -58,6 +57,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <errno.h>
+
+#include "vendor/stb/stb_ds.h"
 
 typedef const char* sStr; /* static string, Literal string, C String */
 typedef const char* lStr; /* static string, Literal string, C String */
