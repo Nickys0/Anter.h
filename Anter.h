@@ -543,8 +543,8 @@ char* ant_string_error(char *buf, size_t size){
     }break;
 
     case ANTERR_COMM_EXPECTED_VALUE:{
-        snprintf(buf, size, "The command: '%s' expected a value but found: <NULL>");        
-    }
+        snprintf(buf, size, "The command: '%s' expected a value but found: <NULL>", _argv[g__AntLastError.arg_idx - 1]);
+    }break;
 
     default:{ }
     }
