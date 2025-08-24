@@ -56,7 +56,7 @@
 #include <stddef.h>
 #include <assert.h>
 #include <stdio.h>
-// #include <errno.h>
+#include <errno.h>
 
 #include "vendor/stb/stb_ds.h"
 
@@ -69,13 +69,6 @@ struct AnterBuffer {
     char*  ptr;     /* pointer to the string buffer */
     size_t size;    /* max size of the string buffer */
 };
-
-// typedef struct {
-    //     char*  ptr;
-    //     size_t len;
-    // } AnterDynamicString;
-// For flag string with an unknown size, the string buffer will 
-// be allocate in the heap througth std malloc
 
 typedef struct AnterBuffer AnterDynamicString;
 typedef struct AnterBuffer AnterFixedString;
@@ -146,7 +139,7 @@ typedef enum AnterErrorKind {
     
     /* when a flag or a command that expected a value but NULL was found, 
         this error is returned */
-    ANTERR_EXPECTED_VALUE = 2, 
+    ANTERR_FLAG_EXPECTED_VALUE = 2, 
 
     /* This is an error that is caused when the value of a flag cannot 
         be converted to the desired type.
@@ -165,6 +158,9 @@ typedef enum AnterErrorKind {
 
     /* It indicates that the passed command from argv[1] is unknown */
     ANTERR_UNKNOWN_COMMAND = 6,
+
+    /* like ANTERR_FLAG_EXPECTED_VALUE but for the command */
+    ANTERR_COMM_EXPECTED_VALUE = 7,
 
     ANTERR_COUNT
 
@@ -202,7 +198,7 @@ ANTER_API void ant_flag_bool(bool* saver, lStr long_flag_name, lStr short_flag_n
 ANTER_API void ant_flag_int(int32_t* saver, lStr long_flag_name, lStr short_flag_name, lStr description);
 ANTER_API void ant_flag_float(float* saver, lStr long_flag_name, lStr short_flag_name, lStr description);
 ANTER_API void ant_flag_string(AnterFixedString saver, lStr long_flag_name, lStr short_flag_name, lStr description);
-ANTER_API void ant_flag_dynamic_string(AnterDynamicString saver, lStr long_flag_name, lStr short_flag_name, lStr description);
+ANTER_API void ant_flag_dynamic_string(AnterDynamicString* saver, lStr long_flag_name, lStr short_flag_name, lStr description);
 
 #define ant_flag_fixed_buff(saver, long_flag, short_flag, desc)\
         ant_flag_string((AnterFixedString){ .ptr = saver, .size = (sizeof(saver) / sizeof(saver[0])) },\
@@ -349,7 +345,7 @@ void ant_flag_float(float *saver, lStr long_flag_name, lStr short_flag_name, lSt
     __add_flag(saver, long_flag_name, short_flag_name, description, ANTER_FLAG_FLOAT);
 }
 
-void ant_flag_dynamic_string(AnterDynamicString saver, lStr long_flag_name, lStr short_flag_name, lStr description){
+void ant_flag_dynamic_string(AnterDynamicString* saver, lStr long_flag_name, lStr short_flag_name, lStr description){
     __add_flag(&saver, long_flag_name, short_flag_name, description, ANTER_FLAG_DYNAMIC_STRING);
 }
 
@@ -404,7 +400,7 @@ AnterErrorKind ant_parse(void){
             if(__f->type != ANTER_FLAG_BOOL) {
                 // If its not a boolean we need to get the value
                 str_value = __shift_args(&argc, &argv);
-                if(str_value == NULL) return __newError(NULL, _idx, ANTERR_EXPECTED_VALUE);   
+                if(str_value == NULL) return __newError(NULL, _idx, ANTERR_FLAG_EXPECTED_VALUE);   
             }
 
             // Here we convert the string_value to what the user asked 
@@ -484,7 +480,7 @@ AnterErrorKind ant_get_command(AnterCommand *out){
         }
     }
 
-    // The command was not found from the registered
+    // The command was not found
     if(com_idx == -1) 
         return __newError(_argv[1], 1, ANTERR_UNKNOWN_COMMAND);
 
@@ -496,47 +492,13 @@ AnterErrorKind ant_get_command(AnterCommand *out){
     // If the command expects a value we need to get it
     if(expected_value){
         if(_argc <= 2)
-            return __newError(NULL, 2, ANTERR_EXPECTED_VALUE);
+            return __newError(NULL, 2, ANTERR_COMM_EXPECTED_VALUE);
         
         out->val = _argv[2];
     }else out->val = NULL; /* we ensure that the value is set to NULL */
     
     return ANTERR_NONE;
 }
-
-/*
-sStr ant_com_str(lStr com){
-    assert(com != NULL);
-
-    int arr_len = (int) stbds_arrlen(g__AntComs);
-
-    // we check the command was actually provided through 'ant_com'
-    int com_idx = -1;
-    for(int i = 0; i < arr_len; ++i){
-        if(strcmp(com, g__AntComs[i].str) == 0){
-            com_idx = i; break;
-        }
-    }
-    // If this happen it means the user didn't call before this the func ant_com to save the command
-    assert(com_idx != -1);
-
-    bool flag_expects_value = g__AntComs[com_idx].expect_value;
-
-    if(_argc <= 1) {
-#if defined(ANTER_STRICT_REQ_COM)
-        __newError("<NULL>", 1, ANTERR_EXPECTED_COMMAND);
-#endif
-        return NULL;
-    }
-
-    // Now we see wich command was used
-    if(strcmp(_argv[1], com) == 0) {
-
-    }
-
-    return NULL;
-}
-*/
 
 /******************** ANTER ERROR HANDLERS ********************/
 
@@ -560,13 +522,12 @@ char* ant_string_error(char *buf, size_t size){
         snprintf(buf, size, "Unknown flag: <%s>", g__AntLastError.arg);
     } break;
     
-    case ANTERR_EXPECTED_VALUE: {
+    case ANTERR_FLAG_EXPECTED_VALUE: {
         snprintf(buf, size, "The flag '%s' expected a value but found: <NULL>", _argv[g__AntLastError.arg_idx - 1]);
     } break;
 
     case ANTERR_CONVERSION_FAILED: {
-        // TODO: AntLastError.arg should point to the value of the flag not the flag its self!!
-        snprintf(buf, size, "Conversation type for flag '%s' failed: %s ", g__AntLastError.arg, strerror(errno));
+        snprintf(buf, size, "Convertion type for flag '%s' failed: %s ", _argv[g__AntLastError.arg_idx - 1], strerror(errno));
     } break;
     
     case ANTERR_NOT_ENOUGH_MEMORY: {
@@ -581,10 +542,14 @@ char* ant_string_error(char *buf, size_t size){
         snprintf(buf, size, "Unknown command: %s", g__AntLastError.arg);
     }break;
 
+    case ANTERR_COMM_EXPECTED_VALUE:{
+        snprintf(buf, size, "The command: '%s' expected a value but found: <NULL>");        
+    }
+
     default:{ }
     }
 
-    static_assert(((ANTERR_COUNT - ANTERR_UNKNOWN_COMMAND) == 1), "PLEASE UPDATE THIS FUNCTION");
+    static_assert(((ANTERR_COUNT - ANTERR_COMM_EXPECTED_VALUE) == 1), "PLEASE UPDATE THIS FUNCTION");
 
     return buf;
 }
@@ -614,6 +579,8 @@ lStr ant_strerror(void){
  *      VERSION HISTORY
  * 
  *      |    DATE    |  VERSION  |              DESCRIPTION
+ *      |            |           |
+ *      | (24/08/25) |   0.2.1   | Bug fixes
  *      |            |           |
  *      | (15/08/25) |   0.2.0   | ++ AnterCommand              [STRUCT]
  *      |            |           | ++ AnterCommandPARAMS        [STRUCT]
