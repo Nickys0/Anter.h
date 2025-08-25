@@ -4,11 +4,10 @@
 enum COMMANDS {
     HELP_COM, 
     NEW_COM,
-    TYPE_COM
+    COMMAND_COUNT
 };
 
 int main(int argc, char** argv) {
-
     ant_init(argc, argv);
 
     // here we say to the library the existance of these commands
