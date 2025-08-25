@@ -66,7 +66,8 @@ typedef const char* lStr; /* static string, Literal string, C String */
 // This structure is used for flag string with a maximum capacity.
 // If you wanna set a max flag val len you can use this one.
 struct AnterBuffer {
-    char*  ptr;     /* pointer to the string buffer */
+    char*  ptr;     /* pointer to the string buffer  */
+    size_t len;     /* length of the buffer in the AnterFixedString this is not used */
     size_t size;    /* max size of the string buffer */
 };
 
@@ -99,8 +100,8 @@ typedef struct __ant_flag_struct {
         float*    f32;
         bool*     boolean;
 
-        AnterDynamicString dyms;
-        AnterFixedString   fixs;
+        AnterDynamicString* dyms;
+        AnterFixedString    fixs;
     }value_as;
 
 } AnterFlag;
@@ -193,7 +194,6 @@ ANTER_API void ant_init(int argc, char** argv);
 /// @param short_flag_name Flag name, withou the single dash (Can be NULL)
 /// @param description String that describes the flag
 /// @warning Only one of the two flag name can be null not both otherwise an assertion will fail
-
 ANTER_API void ant_flag_bool(bool* saver, lStr long_flag_name, lStr short_flag_name, lStr description);
 ANTER_API void ant_flag_int(int32_t* saver, lStr long_flag_name, lStr short_flag_name, lStr description);
 ANTER_API void ant_flag_float(float* saver, lStr long_flag_name, lStr short_flag_name, lStr description);
@@ -278,7 +278,7 @@ void __add_flag(void *saver, lStr long_flag_name, lStr short_flag_name, lStr des
 
     // Error: for dynamic string the user should know the size of the string!
     case ANTER_FLAG_DYNAMIC_STRING: {
-        flag.value_as.dyms = *((AnterDynamicString*)saver);
+        flag.value_as.dyms = (AnterDynamicString*)saver;
     }break;
     
     case ANTER_FLAG_FIXED_STRING: {
@@ -346,7 +346,7 @@ void ant_flag_float(float *saver, lStr long_flag_name, lStr short_flag_name, lSt
 }
 
 void ant_flag_dynamic_string(AnterDynamicString* saver, lStr long_flag_name, lStr short_flag_name, lStr description){
-    __add_flag(&saver, long_flag_name, short_flag_name, description, ANTER_FLAG_DYNAMIC_STRING);
+    __add_flag(saver, long_flag_name, short_flag_name, description, ANTER_FLAG_DYNAMIC_STRING);
 }
 
 void ant_flag_string(AnterFixedString saver, lStr long_flag_name, lStr short_flag_name, lStr description){
@@ -432,17 +432,16 @@ AnterErrorKind ant_parse(void){
 
             case ANTER_FLAG_DYNAMIC_STRING: {
                 size_t val_len = strlen(str_value);
-
-                __f->value_as.dyms.size = val_len;
-                __f->value_as.dyms.ptr = (char*) malloc(__f->value_as.dyms.size);
-                assert(__f->value_as.dyms.ptr != NULL);
-
-                strcpy(__f->value_as.dyms.ptr, str_value); /* if it fails it will crash the program */
+                __f->value_as.dyms->size = val_len + 1 /* We need to include the '/0' */;
+                __f->value_as.dyms->len =  val_len /* We need to include the '/0' */;
+                __f->value_as.dyms->ptr = (char*) malloc(val_len + 1);
+                assert(__f->value_as.dyms->ptr != NULL);
+                strcpy(__f->value_as.dyms->ptr, str_value); /* if it fails it will crash the program */
             }break;
 
             case ANTER_FLAG_FIXED_STRING: {
                 size_t val_len = strlen(str_value);
-                
+                // __f->value_as.fixs.len = val_len; // todo this you need to pass the fixed buffer as a pointer
                 if(val_len > __f->value_as.fixs.size)
                     return __newError(str_value, (_idx - argc), ANTERR_NOT_ENOUGH_MEMORY);
                 
@@ -457,7 +456,6 @@ AnterErrorKind ant_parse(void){
     
     return ANTERR_NONE;
 }
-
 
 AnterErrorKind ant_get_command(AnterCommand *out){
     assert(out != NULL && "Plese provide the structure where to save the command info!");

@@ -22,7 +22,7 @@ bool run_test(strref test_file, strref test_bin, types::Pecode expected, ArgVec 
 
     core::sh cmd;
     if(!fs::file_exist(test_bin) || fs::ft_newer(test_file, test_bin)){
-        cmd << "{CC}" << "-Wall" << "-Wextra" << "-std=c17" 
+        cmd << "{CC}" << "-Wall" << "-Wextra" << "-ggdb" 
             << "-o" << test_bin << test_file
             << "-I."
             << core::execeset;
@@ -48,7 +48,7 @@ int main(int argc, char** argv){
     core::sh cmd;
     fs::mkdir_if_nexists("./.build/");
 
-    run_test("./tests/basic_flags.c", "./.build/test_flag", 0, {"--bool", "--i32", "32", "-s", "Hello", "-d", "World"});
+    run_test("./tests/basic_flags.c", "./.build/test_flag", 0, {"--bool", "--i32", "32", "-s", "Hello", "-d", "help"});
     run_test("./tests/basic_flags.c", "./.build/test_wrong_flag", 1, {"--wrong-bool"});
     run_test("./tests/commands.c", "./.build/test_flags", 0, {"new", "expected_value"});
 
