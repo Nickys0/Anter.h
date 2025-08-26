@@ -16,7 +16,7 @@ int main(int argc, char** argv){
     ant_flag_dynamic_string(&ds,"--dynamic", "-d", NULL);
 
     AnterErrorKind kind;
-    if((kind = ant_parse()) != ANTERR_NONE)
+    if((kind = ant_parse(NULL)) != ANTERR_NONE)
         printf("error: %s\n", ant_strerror());
 
     if(boolean)  fprintf(stdout, "--bool: TRUE\n");
