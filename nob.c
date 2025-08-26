@@ -38,6 +38,7 @@ bool build_and_run_test(Cmd *cmd, const char *test_name, const char** args){
     nob_cc(cmd);
     nob_cc_flags(cmd);
     nob_cmd_append(cmd, "-I.");
+    nob_cmd_append(cmd, "-ggdb");
     nob_cc_output(cmd, bin_path);
     nob_cc_inputs(cmd, src_path);
 
