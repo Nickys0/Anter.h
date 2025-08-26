@@ -26,14 +26,22 @@
  *   ```
  * 
  *   OPTIONS:
+ *   -    #define ANTER_IMPLEMENTATION            It is used to the the library to include the implementation of 
+ *                                                its self
+ * 
  *   -    #define DDASH_EOF_CMD_LINE_FLAGS        If defines it meas that when the parser encounters the double 
  *                                                dashed it will stop parsing flags: "--\0"
  *
- *   -    #define ANTER_IMPLEMENTATION            It is used to the the library to include the implementation of 
- *                                                its self
- *
  *   -    #define ANTER_STRICT_REQ_COM            It means that argv[1] should always be a command, if argv[1] 
  *                                                is a flag, from the given one it cause errors
+ * 
+ *   -    #define ANTER_ALLOC_MULTIPLE_OF         It is used to calculate the number of bytes to allocate for 
+ *                                                AnterDynamicString [DEFAULT: 32] 
+ * 
+ *   CONFIGURABLE_MACROS:
+ *   
+ *   -  ANTER_FREE & ANTER_REALLOC & ANTER_ALLOC  These are default from the stdlib(free, realloc, malloc) but 
+ *                                                you can customize it, by defined all three of them
  *  
  */
 
@@ -55,6 +63,27 @@
 #include <stdio.h>
 #include <errno.h>
 
+#ifndef ANTER_ALLOC_MULTIPLE_OF
+#   define ANTER_ALLOC_MULTIPLE_OF 32
+#endif
+
+#if defined(ANTER_REALLOC) && !defined(ANTER_FREE) && !defined(ANTER_ALLOC)\
+    || !defined(ANTER_REALLOC) && defined(ANTER_FREE) && !defined(ANTER_ALLOC)\
+    || !defined(ANTER_REALLOC) && !defined(ANTER_FREE) && defined(ANTER_ALLOC)
+#   error "You must define ANTER_REALLOC, ANTER_FREE, ANTER_ALLOC, or neither."
+#endif
+
+#if !defined(ANTER_REALLOC) && !defined(ANTER_FREE)
+#   include <stdlib.h>
+#   define ANTER_REALLOC(p,s)       realloc(p,s)
+#   define ANTER_FREE(p)            free(p)
+#   define ANTER_ALLOC(s)           malloc(s)
+#endif
+
+// For stb_ds compatibility
+#define STBDS_REALLOC(c, p, s)   ANTER_REALLOC(p,s)
+#define STBDS_FREE(c,p)          ANTER_FREE(p)
+
 /* This is a modified version of stb_ds.h library 
     you can found the original one at: https://github.com/nothings/stb
     You can found the license of stb_ds.h at the bottom of this file */
@@ -75,6 +104,7 @@ LICENSE
   Placed in the public domain and also MIT licensed.
   See end of file for detailed license information.
 */
+// TODO: remove this
 #ifndef STBDS_NO_SHORT_NAMES
 #define arrlen      stbds_arrlen
 #define arrlenu     stbds_arrlenu
@@ -94,15 +124,6 @@ LICENSE
 #define arrdelswap  stbds_arrdelswap
 #define arrcap      stbds_arrcap
 #define arrsetcap   stbds_arrsetcap
-#endif
-
-#if defined(STBDS_REALLOC) && !defined(STBDS_FREE) || !defined(STBDS_REALLOC) && defined(STBDS_FREE)
-#error "You must define both STBDS_REALLOC and STBDS_FREE, or neither."
-#endif
-#if !defined(STBDS_REALLOC) && !defined(STBDS_FREE)
-#include <stdlib.h>
-#define STBDS_REALLOC(c,p,s) realloc(p,s)
-#define STBDS_FREE(c,p)      free(p)
 #endif
 
 #ifdef __cplusplus
@@ -621,16 +642,18 @@ AnterErrorKind ant_parse(void){
 
             case ANTER_FLAG_DYNAMIC_STRING: {
                 size_t val_len = strlen(str_value);
-                __f->value_as.dyms->size = val_len + 1 /* We need to include the '/0' */;
-                __f->value_as.dyms->len =  val_len /* We need to include the '/0' */;
-                __f->value_as.dyms->ptr = (char*) malloc(val_len + 1);
+                /* we always allocate multiples of ANTER_ALLOC_MULTIPLE_OF */
+                __f->value_as.dyms->size = (ANTER_ALLOC_MULTIPLE_OF * (val_len / ANTER_ALLOC_MULTIPLE_OF)) 
+                                            + (ANTER_ALLOC_MULTIPLE_OF * ((val_len % ANTER_ALLOC_MULTIPLE_OF) > 0)); 
+                __f->value_as.dyms->len =  val_len;
+                __f->value_as.dyms->ptr = (char*) ANTER_ALLOC(__f->value_as.dyms->size);
                 assert(__f->value_as.dyms->ptr != NULL);
                 strcpy(__f->value_as.dyms->ptr, str_value); /* if it fails it will crash the program */
             }break;
 
             case ANTER_FLAG_FIXED_STRING: {
                 size_t val_len = strlen(str_value);
-                // __f->value_as.fixs.len = val_len; // todo this you need to pass the fixed buffer as a pointer
+                // __f->value_as.fixs.len = val_len; // to do this you need to pass the fixed buffer as a pointer
                 if(val_len > __f->value_as.fixs.size)
                     return __newError(str_value, (_idx - argc), ANTERR_NOT_ENOUGH_MEMORY);
                 
@@ -638,7 +661,7 @@ AnterErrorKind ant_parse(void){
             }break;
 
             default:
-                assert(0 && "Something went wrong!");
+                assert(0 && "Something went wrong: This flag type wasn't expected");
             }
         }
     }
@@ -765,13 +788,19 @@ lStr ant_strerror(void){
  * 
  *      |    DATE    |  VERSION  |              DESCRIPTION
  *      |            |           |
- *      | (26/08/25) |   0.2.4   | Fixing ant_get_command function, we ensure that by default idx is equal to -1
- *      |            |           |
+ *      | (26/08/25) |   0.2.4   | ++ Fixing ant_get_command function, we ensure that by default idx is equal to -1
+ *      |            |           | ++ Mofified the ant_parse function for AnterDynamicString flag so that we always
+ *      |            |           |    allocate a multiple of ANTER_ALLOC_MULTIPLE_OF
+ *      |            |           | ++ Adding:
+ *      |            |           |    - ANTER_ALLOC 
+ *      |            |           |    - ANTER_REALLOC
+ *      |            |           |    - ANTER_FREE
+ *      |            |           | 
  *      | (25/08/25) |   0.2.3   | Integrating stb_ds.h library so that this can become an header only library
  *      |            |           |
  *      | (25/08/25) |   0.2.2   | Fixing AnterDynamicString problems
  *      |            |           |
- *      | (24/08/25) |   0.2.1   | Bug fixes
+ *      | (24/08/25) |   0.2.1   | Some bug fixes
  *      |            |           |
  *      | (15/08/25) |   0.2.0   | ++ AnterCommand              [STRUCT]
  *      |            |           | ++ AnterCommandPARAMS        [STRUCT]
@@ -782,18 +811,15 @@ lStr ant_strerror(void){
  *      |            |           |
  *      | (10/08/25) |   0.1.0   | First release of the library
  *      |            |           |
- *          
  * 
  **/
 
 /*
     TODOS:
-    - We should internalize the stb_ds.h library to make this an header only library [!!!]
-
-    - We should allow these flag value regexp: [!]
+    - We should allow these flag value regexp: [!!!]
         flag=value | flag value
 
-    - Add an implicit help command or flag based on a macro definition
+    - Add an implicit help command or flag based on a macro definition [!]
 */
 
 /*
