@@ -20,7 +20,7 @@
  *       ant_parse(argc, argv);
  *       // every other related function 
  *       ...
- *   
+ *       ant_clean( ); // will deallocate all the memory and reseting the internal state as invalid
  *       return 0;
  *   }
  *   ```
@@ -32,12 +32,17 @@
  *   -    #define DDASH_EOF_CMD_LINE_FLAGS        If defines it meas that when the parser encounters the double 
  *                                                dashed it will stop parsing flags: "--\0"
  *
- *   -    #define ANTER_STRICT_REQ_COM            It means that argv[1] should always be a command, if argv[1] 
+ *   -    #define ANTER_STRICT_REQUIRED_COMMAND   It means that argv[1] should always be a command, if argv[1] 
  *                                                is a flag, from the given one it cause errors
  * 
  *   -    #define ANTER_ALLOC_MULTIPLE_OF         It is used to calculate the number of bytes to allocate for 
  *                                                AnterDynamicString [DEFAULT: 32] 
+ *
+ *   -    #define ANTER_NO_STRICT_PARAMS          If defined anter will not thrown an error if an unknown args was
+ *                                                passed.
  * 
+ *   -    #define ANTER_ALLOW_FLAGS_AS_COMMANDS   If defined it will let use flags syntax as commands
+ *   
  *   CONFIGURABLE_MACROS:
  *   
  *   -  ANTER_FREE & ANTER_REALLOC & ANTER_ALLOC  These are default from the stdlib(free, realloc, malloc) but 
@@ -179,27 +184,8 @@ typedef struct{
 template<class T> static T * stbds_arrgrowf_wrapper(T *a, size_t elemsize, size_t addlen, size_t min_cap) {
   return (T*)stbds_arrgrowf((void *)a, elemsize, addlen, min_cap);
 }
-template<class T> static T * stbds_hmget_key_wrapper(T *a, size_t elemsize, void *key, size_t keysize, int mode) {
-  return (T*)stbds_hmget_key((void*)a, elemsize, key, keysize, mode);
-}
-template<class T> static T * stbds_hmget_key_ts_wrapper(T *a, size_t elemsize, void *key, size_t keysize, ptrdiff_t *temp, int mode) {
-  return (T*)stbds_hmget_key_ts((void*)a, elemsize, key, keysize, temp, mode);
-}
-template<class T> static T * stbds_hmput_default_wrapper(T *a, size_t elemsize) {
-  return (T*)stbds_hmput_default((void *)a, elemsize);
-}
-template<class T> static T * stbds_hmput_key_wrapper(T *a, size_t elemsize, void *key, size_t keysize, int mode) {
-  return (T*)stbds_hmput_key((void*)a, elemsize, key, keysize, mode);
-}
-template<class T> static T * stbds_hmdel_key_wrapper(T *a, size_t elemsize, void *key, size_t keysize, size_t keyoffset, int mode){
-  return (T*)stbds_hmdel_key((void*)a, elemsize, key, keysize, keyoffset, mode);
-}
-template<class T> static T * stbds_shmode_func_wrapper(T *, size_t elemsize, int mode) {
-  return (T*)stbds_shmode_func(elemsize, mode);
-}
 #else
 #define stbds_arrgrowf_wrapper            stbds_arrgrowf
-#define stbds_shmode_func_wrapper(t,e,m)  stbds_shmode_func(e,m)
 #endif
 /****************** END OF STB_DS HEADER ******************/
 
@@ -295,8 +281,10 @@ typedef enum AnterErrorKind {
         for the given buffer */
     ANTERR_NOT_ENOUGH_MEMORY = 4,
 
-    /* This is error is set when the option 'ANTER_STRICT_REQ_COM' was defined and
-        it wasn't provied any commands through the command line.
+    /* This is error is set when it wasn't provied any commands through 
+        the command line.
+        You can change this behaviour throughout some options: see at 
+        the top for more details
         error_info.str = NULL, error_info.idx = 1 */
     ANTERR_EXPECTED_COMMAND = 5,
 
@@ -305,6 +293,9 @@ typedef enum AnterErrorKind {
 
     /* like ANTERR_FLAG_EXPECTED_VALUE but for the command */
     ANTERR_COMM_EXPECTED_VALUE = 7,
+
+    /* When the parsed argument doesn't produced any result this is thrown */
+    ANTERR_UNKNOWN_ARG = 8,
 
     ANTERR_COUNT
 
@@ -342,11 +333,11 @@ ANTER_API void ant_flag_int(int32_t* saver, lStr long_flag_name, lStr short_flag
 ANTER_API void ant_flag_float(float* saver, lStr long_flag_name, lStr short_flag_name, lStr description);
 ANTER_API void ant_flag_string(AnterFixedString saver, lStr long_flag_name, lStr short_flag_name, lStr description);
 ANTER_API void ant_flag_dynamic_string(AnterDynamicString* saver, lStr long_flag_name, lStr short_flag_name, lStr description);
-
 #define ant_flag_fixed_buff(saver, long_flag, short_flag, desc)\
         ant_flag_string((AnterFixedString){ .ptr = saver, .size = (sizeof(saver) / sizeof(saver[0])) },\
                                 long_flag, short_flag, desc )
 
+ANTER_API void ant_set_command(const char* str_com, const char* desc, bool expect_val);
 /// @brief This function will save the command to later be parsed.
 ///         A command should be rigth after the bin_path as follow:
 ///         bin_path <com> [VALUE] [OPTIONS]
@@ -359,12 +350,17 @@ ANTER_API void _ant_set_coms(const AnterCommandParams* coms, size_t coms_count);
 /// @brief This function will retrieve the  command from the argv.
 ANTER_API AnterErrorKind ant_get_command(AnterCommand* out);
 
+// TODO: we should add a function that only parses a command or a flag
 
-/// @brief argc and argv should be passed as the same as the main function, no shifting required
+/// @brief This function is a merge of ant_get_command and ant_get_flags so it actually parses the arguments 
+///         to get both commads and flags, you can actually use this to parse only the flags is out is NULL
+/// @param out Is where we save the command info if given from both the user and the programmer.
+///             If is NULL it means you don't expect any command, so if something was passed that is not a
+///             flag relative an error is returned, TODO: to avoid this behaviour you can define: ANTER_NO_STRICT_PARAMS
 /// @return FAILS :: != ANTERR_NONE
 /// The information about the error can be found in the ant_last_error var,
 /// the position of the params of the single error can be found in the AnterErrorKind enum declaration 
-ANTER_API AnterErrorKind ant_parse(void);
+ANTER_API AnterErrorKind ant_parse(AnterCommand* out);
 
 /******************** ANTER ERROR HANDLERS ********************/
 
@@ -380,18 +376,21 @@ ANTER_API char* ant_string_error(char* buf, size_t size);
 // like ant_string_error but it used an internal buffer to create the string
 ANTER_API lStr ant_strerror(void);
 
+// It will free all the allocated memory
+ANTER_API void ant_clean(void);
+
 #endif // !_ANTER_H
 
 //////////////////////////////////////////////////////////////////////////////
 //
 //   IMPLEMENTATION
 //
-// #define ANTER_IMPLEMENTATION
+#define ANTER_IMPLEMENTATION
 #ifdef ANTER_IMPLEMENTATION
 
 AnterFlag* g__AntFlags = NULL;              /* List of flags, to append flags we use the stb_ds library */
 AnterCommandParams* g__AntComs = NULL;      /* List of commands */
-AnterError g__AntLastError = { 0 };         /* like errno but more fancy */
+AnterError g__AntLastError = { ANTERR_NONE };         /* like errno but more fancy */
 
 int _argc = 0;
 char** _argv = NULL;
@@ -537,6 +536,38 @@ AnterErrorKind __newError(lStr arg, size_t idx, AnterErrorKind kind){
     return (g__AntLastError.kind = kind);
 }
 
+AnterErrorKind __get_command_info(AnterCommand* out){
+    assert(out != NULL && "INTERNAL FUNCTION: out should not be NULL!");
+
+    out->idx = -1;
+    int arr_len = (int) stbds_arrlen(g__AntComs);
+
+    // we find the command index
+    for(int i = 0; i < arr_len; ++i){
+        if(strcmp(_argv[1], g__AntComs[i].str) == 0){
+            out->idx = i; break;
+        }
+    }
+
+    // The command was not found
+    if(out->idx == -1)
+        return __newError(_argv[1], 1, ANTERR_UNKNOWN_COMMAND);
+  
+    bool expected_value = g__AntComs[out->idx].expect_val;
+    out->str = _argv[1];
+    
+    // If the command expects a value we need to get it
+    if(expected_value){
+        if(_argc <= 2)
+            return __newError(NULL, 2, ANTERR_COMM_EXPECTED_VALUE);
+        
+        out->val = _argv[2];
+    }else out->val = NULL; /* we ensure that the value is set to NULL */
+    
+    return ANTERR_NONE;
+}
+
+
 void ant_init(int argc, char **argv){
     _argc = argc;
     _argv = argv;
@@ -565,28 +596,57 @@ void ant_flag_string(AnterFixedString saver, lStr long_flag_name, lStr short_fla
 
 void _ant_set_coms(const AnterCommandParams* coms, size_t coms_count){
     assert(coms != NULL);
-
-    for(size_t i = 0; i < coms_count; ++i){
-        AnterCommandParams __c = {
-            .str = coms[i].str,
-            .des = coms[i].des,
-            .expect_val = coms[i].expect_val
-        };
-        stbds_arrpush(g__AntComs, __c);
-    }
+    for(size_t i = 0; i < coms_count; ++i)
+        ant_set_command(coms[i].str, coms[i].des, coms[i].expect_val);
 }
 
-AnterErrorKind ant_parse(void){
-    assert(_argc != 0 || _argv != NULL);
+void ant_set_command(const char* str_com, const char* desc, bool expect_val){
+    AnterCommandParams __c = {
+        .str = str_com,
+        .des = desc,
+        .expect_val = expect_val
+    };
+    stbds_arrpush(g__AntComs, __c);
+}
+
+AnterErrorKind ant_parse(AnterCommand* out){
+    assert((_argc != 0 || _argv != NULL) && "Call ant_init before this");
 
     int argc =      _argc;
     char** argv =   _argv;
     size_t _idx =   argc; // last index;
 
-
     __shift_args(&argc, &argv); /* we skip the bin path */
 
-    lStr arg = NULL;
+    lStr arg = argv[0];
+
+#if defined(ANTER_STRICT_REQUIRED_COMMAND)
+    if(arg == NULL) return __newError(NULL, 1, ANTERR_EXPECTED_COMMAND);
+#else
+    if(arg == NULL) return ANTERR_NONE;
+#endif
+
+    if(out != NULL) /* We expect a command */ {
+        bool flag_syntax = (arg[0] == '-' && arg[1] != '\0')? true : false;
+        int fidx = __flag_idx(arg);
+        if(fidx >= 0) /* its a flag */
+#if defined(ANTER_STRICT_REQUIRED_COMMAND) && !defined(ANTER_ALLOW_FLAGS_AS_COMMANDS)
+        return __newError(arg, 1, ANTERR_EXPECTED_COMMAND);
+#else
+        { /* do nothing */ }
+        #endif
+        else {
+#if !defined(ANTER_ALLOW_FLAGS_AS_COMMANDS)
+            if(flag_syntax) return __newError(arg, 1, ANTERR_EXPECTED_COMMAND);
+#endif
+            AnterErrorKind kind = __get_command_info(out);
+            if(kind != ANTERR_NONE) return kind;
+            assert(__shift_args(&argc, &argv) != NULL);
+            if(g__AntComs[out->idx].expect_val){
+                assert(__shift_args(&argc, &argv) != NULL);
+            }
+        }
+    }
 
     while((arg = __shift_args(&argc, &argv)) != NULL) {
 
@@ -642,13 +702,16 @@ AnterErrorKind ant_parse(void){
 
             case ANTER_FLAG_DYNAMIC_STRING: {
                 size_t val_len = strlen(str_value);
+                AnterDynamicString* dyms = __f->value_as.dyms;
+                dyms->len =  val_len;
+                
                 /* we always allocate multiples of ANTER_ALLOC_MULTIPLE_OF */
-                __f->value_as.dyms->size = (ANTER_ALLOC_MULTIPLE_OF * (val_len / ANTER_ALLOC_MULTIPLE_OF)) 
+                dyms->size = (ANTER_ALLOC_MULTIPLE_OF * (val_len / ANTER_ALLOC_MULTIPLE_OF)) 
                                             + (ANTER_ALLOC_MULTIPLE_OF * ((val_len % ANTER_ALLOC_MULTIPLE_OF) > 0)); 
-                __f->value_as.dyms->len =  val_len;
-                __f->value_as.dyms->ptr = (char*) ANTER_ALLOC(__f->value_as.dyms->size);
-                assert(__f->value_as.dyms->ptr != NULL);
-                strcpy(__f->value_as.dyms->ptr, str_value); /* if it fails it will crash the program */
+                dyms->ptr = (char*) ANTER_ALLOC(dyms->size);
+
+                assert(dyms->ptr != NULL);
+                strcpy(dyms->ptr, str_value); /* if it fails it will crash the program */
             }break;
 
             case ANTER_FLAG_FIXED_STRING: {
@@ -663,49 +726,31 @@ AnterErrorKind ant_parse(void){
             default:
                 assert(0 && "Something went wrong: This flag type wasn't expected");
             }
+        } 
+#if !defined(ANTER_NO_STRICT_PARAMS)
+        else{
+            return __newError(arg, (_idx - argc) - 1, ANTERR_UNKNOWN_ARG);
         }
+#endif
     }
     
     return ANTERR_NONE;
 }
 
+/* This will get the command without the flags, If you wanne get both you should use ant_parse! */
 AnterErrorKind ant_get_command(AnterCommand *out){
+    assert((_argc != 0 || _argv != NULL) && "Call ant_init before this");
     assert(out != NULL && "Plese provide the structure where to save the command info!");
 
     if(_argc <= 1) {
-#if defined(ANTER_STRICT_REQ_COM)
+#if defined(ANTER_STRICT_REQUIRED_COMMAND)
         return __newError(NULL, 1, ANTERR_EXPECTED_COMMAND);
 #else
         return ANTERR_NONE;
 #endif
     }
 
-    out->idx = -1;
-    int arr_len = (int) stbds_arrlen(g__AntComs);
-
-    // we find the command index
-    for(int i = 0; i < arr_len; ++i){
-        if(strcmp(_argv[1], g__AntComs[i].str) == 0){
-            out->idx = i; break;
-        }
-    }
-
-    // The command was not found
-    if(out->idx == -1)
-        return __newError(_argv[1], 1, ANTERR_UNKNOWN_COMMAND);
-  
-    bool expected_value = g__AntComs[out->idx].expect_val;
-    out->str = _argv[1];
-    
-    // If the command expects a value we need to get it
-    if(expected_value){
-        if(_argc <= 2)
-            return __newError(NULL, 2, ANTERR_COMM_EXPECTED_VALUE);
-        
-        out->val = _argv[2];
-    }else out->val = NULL; /* we ensure that the value is set to NULL */
-    
-    return ANTERR_NONE;
+    return __get_command_info(out);
 }
 
 /******************** ANTER ERROR HANDLERS ********************/
@@ -727,7 +772,7 @@ char* ant_string_error(char *buf, size_t size){
     } break;
 
     case ANTERR_UNKNOWN_FLAG: {
-        snprintf(buf, size, "Unknown flag: <%s>", g__AntLastError.arg);
+        snprintf(buf, size, "Unknown flag: '%s'", g__AntLastError.arg);
     } break;
     
     case ANTERR_FLAG_EXPECTED_VALUE: {
@@ -735,15 +780,15 @@ char* ant_string_error(char *buf, size_t size){
     } break;
 
     case ANTERR_CONVERSION_FAILED: {
-        snprintf(buf, size, "Convertion type for flag '%s' failed: %s ", _argv[g__AntLastError.arg_idx - 1], strerror(errno));
+        snprintf(buf, size, "The flag's value convertion failed: '%s'", _argv[g__AntLastError.arg_idx - 2]);
     } break;
-    
+
     case ANTERR_NOT_ENOUGH_MEMORY: {
         snprintf(buf, size, "Not enough memory!");
     } break;
-    
+
     case ANTERR_EXPECTED_COMMAND:{
-        snprintf(buf, size, "Expected a command but found: <NULL>");
+        snprintf(buf, size, "Expected a command but found: '%s'", g__AntLastError.arg);
     }break;
 
     case ANTERR_UNKNOWN_COMMAND:{
@@ -754,10 +799,14 @@ char* ant_string_error(char *buf, size_t size){
         snprintf(buf, size, "The command: '%s' expected a value but found: <NULL>", _argv[g__AntLastError.arg_idx - 1]);
     }break;
 
+    case ANTERR_UNKNOWN_ARG:{
+        snprintf(buf, size, "Unknown argument given at argv[<%ld>]: %s", g__AntLastError.arg_idx, g__AntLastError.arg);
+    }break;
+
     default:{ }
     }
 
-    static_assert(((ANTERR_COUNT - ANTERR_COMM_EXPECTED_VALUE) == 1), "PLEASE UPDATE THIS FUNCTION");
+    static_assert(((ANTERR_COUNT - ANTERR_UNKNOWN_ARG) == 1), "PLEASE UPDATE THIS FUNCTION");
 
     return buf;
 }
@@ -765,6 +814,18 @@ char* ant_string_error(char *buf, size_t size){
 lStr ant_strerror(void){
     static char buffer[512];
     return ant_string_error(buffer, sizeof(buffer));
+}
+
+void ant_clean(void){
+    stbds_arrfree(g__AntComs);
+    stbds_arrfree(g__AntFlags);
+    
+    g__AntLastError.arg = NULL;
+    g__AntLastError.arg_idx = 0;
+    g__AntLastError.kind = ANTERR_NONE;
+
+    _argc = 0;
+    _argv = NULL;
 }
 
 #endif // ANTER_IMPLEMENTATION
@@ -778,8 +839,7 @@ lStr ant_strerror(void){
  *      Version Conventions:
  *      - Modifying comments does not update the version.
  *      - PATCH is incremented in case of a bug fix or refactoring without touching the API.
- *      - MINOR is incremented when new functions and/or types are added in a way that does
- *        not break any existing user code.
+ *      - MINOR is incremented when new functions and/or types are added.
  *      - MAJOR update should be just a periodic cleanup of the deprecated functions and types
  *        without really modifying any existing functionality.
  * 
@@ -788,13 +848,20 @@ lStr ant_strerror(void){
  * 
  *      |    DATE    |  VERSION  |              DESCRIPTION
  *      |            |           |
+ *      | (26/08/25) |   0.3.0   | ++ __get_command_info [INTERNAL]
+ *      |            |           | -+ modified ant_parse() that nows parses commands and flags altogether
+ *      |            |           | ++ ant_clean
+ *      |            |           | ++ ant_set_command
+ *      |            |           | ++ NEW OPTION: ANTER_ALLOW_FLAGS_AS_COMMANDS
+ *      |            |           | ++ NEW OPTION: ANTER_NO_STRICT_PARAMS
+ *      |            |           |
  *      | (26/08/25) |   0.2.4   | ++ Fixing ant_get_command function, we ensure that by default idx is equal to -1
- *      |            |           | ++ Mofified the ant_parse function for AnterDynamicString flag so that we always
+ *      |            |           | -+ Mofified the ant_parse function for AnterDynamicString flag so that we always
  *      |            |           |    allocate a multiple of ANTER_ALLOC_MULTIPLE_OF
  *      |            |           | ++ Adding:
- *      |            |           |    - ANTER_ALLOC 
- *      |            |           |    - ANTER_REALLOC
- *      |            |           |    - ANTER_FREE
+ *      |            |           |    - ANTER_ALLOC         [MACRO]
+ *      |            |           |    - ANTER_REALLOC       [MACRO]
+ *      |            |           |    - ANTER_FREE          [MACRO]
  *      |            |           | 
  *      | (25/08/25) |   0.2.3   | Integrating stb_ds.h library so that this can become an header only library
  *      |            |           |
