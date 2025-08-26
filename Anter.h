@@ -145,12 +145,11 @@ extern void   stbds_arrfreef(void *a);
 
 #define stbds_arrgrow(a,b,c)   ((a) = stbds_arrgrowf_wrapper((a), sizeof *(a), (b), (c)))
 
-typedef struct
-{
-  size_t      length;
-  size_t      capacity;
-  void      * hash_table;
-  ptrdiff_t   temp;
+typedef struct{
+    size_t      length;
+    size_t      capacity;
+    void      * hash_table;
+    ptrdiff_t   temp;
 } stbds_array_header;
 
 #ifdef __cplusplus
@@ -366,7 +365,7 @@ ANTER_API lStr ant_strerror(void);
 //
 //   IMPLEMENTATION
 //
-
+// #define ANTER_IMPLEMENTATION
 #ifdef ANTER_IMPLEMENTATION
 
 AnterFlag* g__AntFlags = NULL;              /* List of flags, to append flags we use the stb_ds library */
@@ -658,23 +657,21 @@ AnterErrorKind ant_get_command(AnterCommand *out){
 #endif
     }
 
+    out->idx = -1;
     int arr_len = (int) stbds_arrlen(g__AntComs);
 
     // we find the command index
-    int com_idx = -1;
     for(int i = 0; i < arr_len; ++i){
         if(strcmp(_argv[1], g__AntComs[i].str) == 0){
-            com_idx = i; break;
+            out->idx = i; break;
         }
     }
 
     // The command was not found
-    if(com_idx == -1) 
+    if(out->idx == -1)
         return __newError(_argv[1], 1, ANTERR_UNKNOWN_COMMAND);
-
-    bool expected_value = g__AntComs[com_idx].expect_val;
-
-    out->idx = com_idx;
+  
+    bool expected_value = g__AntComs[out->idx].expect_val;
     out->str = _argv[1];
     
     // If the command expects a value we need to get it
@@ -767,6 +764,8 @@ lStr ant_strerror(void){
  *      VERSION HISTORY
  * 
  *      |    DATE    |  VERSION  |              DESCRIPTION
+ *      |            |           |
+ *      | (26/08/25) |   0.2.4   | Fixing ant_get_command function, we ensure that by default idx is equal to -1
  *      |            |           |
  *      | (25/08/25) |   0.2.3   | Integrating stb_ds.h library so that this can become an header only library
  *      |            |           |

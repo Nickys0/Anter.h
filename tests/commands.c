@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    fprintf(stdout, "%s command parsed, value: %s, idx: %ld \n", com.str, com.val, com.idx);
+    fprintf(stdout, "%s command parsed, value: %s, type: %ld \n", com.str, com.val, com.idx);
 
     return 0;
 }
