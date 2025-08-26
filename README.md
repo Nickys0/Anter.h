@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "error: %s", ant_strerror());
 
     ...
-
+    ant_clean( ); // Deallocates and setting the internal state to an invalid one
     return 0;
 }
 ```
